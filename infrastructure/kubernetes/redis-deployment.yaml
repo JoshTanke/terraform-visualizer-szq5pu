@@ -1,0 +1,118 @@
+# Redis Deployment and Service Configuration for Terraform Visualization Tool
+# Version: Redis 7.0.x on Kubernetes 1.25+
+# Purpose: Provides caching and real-time data management with monitoring and service mesh integration
+
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: terraform-visualizer
+  labels:
+    app: terraform-visualizer
+    component: redis
+    version: "7.0"
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+    sidecar.istio.io/inject: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: terraform-visualizer
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: terraform-visualizer
+        component: redis
+    spec:
+      # Security Context for Redis container
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsNonRoot: true
+      containers:
+        # Redis Main Container
+        - name: redis
+          image: redis:7.0-alpine
+          ports:
+            - containerPort: 6379
+              name: redis
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "200m"
+              memory: "512Mi"
+          # Health Checks
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          # Configuration and Scripts
+          volumeMounts:
+            - name: redis-config
+              mountPath: /usr/local/etc/redis
+            - name: redis-scripts
+              mountPath: /scripts
+        
+        # Redis Exporter for Prometheus Metrics
+        - name: redis-exporter
+          image: oliver006/redis_exporter:v1.44.0
+          ports:
+            - containerPort: 9121
+              name: metrics
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+      
+      # Volumes from ConfigMaps
+      volumes:
+        - name: redis-config
+          configMap:
+            name: redis-config
+        - name: redis-scripts
+          configMap:
+            name: redis-scripts
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: terraform-visualizer
+  labels:
+    app: terraform-visualizer
+    component: redis
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+    - port: 9121
+      targetPort: 9121
+      protocol: TCP
+      name: metrics
+  selector:
+    app: terraform-visualizer
+    component: redis
+  type: ClusterIP
