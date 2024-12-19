@@ -1,0 +1,157 @@
+# Kubernetes API version and resource type
+# Using apps/v1 for Deployment resource (Kubernetes v1.25+)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  namespace: terraform-visualizer
+  labels:
+    app: terraform-visualizer
+    component: backend
+  annotations:
+    description: "Backend service for Terraform Visualization Tool"
+    maintainer: "DevOps Team"
+
+spec:
+  # Initial replica count with HPA managing between 2-8 pods
+  replicas: 2
+  
+  # Pod selector for the deployment
+  selector:
+    matchLabels:
+      app: terraform-visualizer
+      component: backend
+
+  # Deployment update strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Allow one extra pod during updates
+      maxSurge: 1
+      # Ensure no downtime during updates
+      maxUnavailable: 0
+
+  # Pod template specification
+  template:
+    metadata:
+      labels:
+        app: terraform-visualizer
+        component: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "3000"
+
+    spec:
+      # Security context for the pod
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+
+      # Container specifications
+      containers:
+      - name: backend
+        image: terraform-visualizer/backend:latest
+        imagePullPolicy: Always
+        
+        # Container ports
+        ports:
+        - name: http
+          containerPort: 3000
+          protocol: TCP
+
+        # Resource requests and limits as per specifications
+        resources:
+          requests:
+            cpu: "500m"    # 0.5 vCPU
+            memory: "1Gi"  # 1GB RAM
+          limits:
+            cpu: "1000m"   # 1 vCPU
+            memory: "2Gi"  # 2GB RAM
+
+        # Environment variables from ConfigMap and Secrets
+        envFrom:
+        - configMapRef:
+            name: backend-config
+        - secretRef:
+            name: backend-secrets
+
+        # Volume mounts for configuration and secrets
+        volumeMounts:
+        - name: backend-config
+          mountPath: /app/config
+          readOnly: true
+        - name: backend-secrets
+          mountPath: /app/secrets
+          readOnly: true
+
+        # Liveness probe for container health monitoring
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Readiness probe for service availability
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Security context for the container
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+
+      # Volumes configuration
+      volumes:
+      - name: backend-config
+        configMap:
+          name: backend-config
+      - name: backend-secrets
+        secret:
+          secretName: backend-secrets
+
+      # Pod scheduling and anti-affinity
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: component
+                  operator: In
+                  values:
+                  - backend
+              topologyKey: kubernetes.io/hostname
+
+      # Service account for the pod
+      serviceAccountName: backend-service-account
+
+      # Node selector for production workloads
+      nodeSelector:
+        type: application
+        environment: production
+
+      # Tolerations for node taints
+      tolerations:
+      - key: "type"
+        operator: "Equal"
+        value: "application"
+        effect: "NoSchedule"
+
+      # Termination grace period
+      terminationGracePeriodSeconds: 60
