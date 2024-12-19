@@ -1,0 +1,197 @@
+# Datadog Agent Version: 7.x
+# Purpose: Centralized logging configuration for Terraform Visualizer application
+# Components: Frontend, Backend, Parser services logging configuration
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logging-config
+  namespace: monitoring
+  labels:
+    app: terraform-visualizer
+    component: logging
+
+data:
+  # Log Collection Configuration
+  log-collection.yaml: |
+    frontend:
+      enabled: true
+      sources:
+        - stdout
+        - stderr
+      tags:
+        - service:frontend
+        - component:ui
+      processing_rules:
+        - type: multi_line
+          name: stack_traces
+          pattern: '^\s'
+    
+    backend:
+      enabled: true
+      sources:
+        - stdout
+        - stderr
+        - /var/log/app/*.log
+      tags:
+        - service:backend
+        - component:api
+      processing_rules:
+        - type: mask_sequences
+          name: mask_sensitive_data
+          pattern: '(password=)[^\s]+'
+    
+    parser:
+      enabled: true
+      sources:
+        - stdout
+        - stderr
+        - /var/log/parser/*.log
+      tags:
+        - service:parser
+        - component:terraform
+      processing_rules:
+        - type: multi_line
+          name: terraform_errors
+          pattern: '^Error:'
+
+  # Log Processing Configuration
+  log-processing.yaml: |
+    retention_days: 30
+    index_name: terraform-visualizer
+    categories:
+      - application
+      - security
+      - performance
+      - audit
+    filters:
+      - type: exclude
+        name: health_checks
+        pattern: '.*health.*'
+      - type: mask
+        name: sensitive_data
+        pattern: '(api_key=)[^\s]+'
+
+  # Log Forwarding Configuration
+  log-forwarding.yaml: |
+    datadog:
+      enabled: true
+      api_key: ${DATADOG_API_KEY}
+      site: datadoghq.com
+      tags:
+        - env:production
+        - app:terraform-visualizer
+
+  # Agent Configuration
+  agent-config.yaml: |
+    agent_settings:
+      log_level: INFO
+      collection_interval: 10s
+      batch_size: 100
+      max_backlog_size: 20MB
+    
+    performance:
+      buffer_size: 256MB
+      compression: true
+      max_file_size: 50MB
+      max_files: 5
+    
+    security:
+      tls_enabled: true
+      verify_ssl: true
+      encrypt_sensitive_data: true
+
+---
+# Datadog Agent DaemonSet Configuration
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: datadog-agent-logging
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: datadog-agent-logging
+  template:
+    metadata:
+      labels:
+        app: datadog-agent-logging
+    spec:
+      containers:
+        - name: datadog-agent
+          image: datadog/agent:7
+          env:
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-secret
+                  key: api-key
+            - name: DD_LOGS_ENABLED
+              value: "true"
+            - name: DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL
+              value: "true"
+            - name: DD_CONTAINER_EXCLUDE
+              value: "name:datadog-agent"
+          volumeMounts:
+            - name: logging-config
+              mountPath: /etc/datadog-agent/conf.d/logging
+            - name: dockersocket
+              mountPath: /var/run/docker.sock
+            - name: logpath
+              mountPath: /var/log
+            - name: config
+              mountPath: /etc/datadog-agent
+      volumes:
+        - name: logging-config
+          configMap:
+            name: logging-config
+        - name: dockersocket
+          hostPath:
+            path: /var/run/docker.sock
+        - name: logpath
+          hostPath:
+            path: /var/log
+        - name: config
+          configMap:
+            name: datadog-agent-config
+
+---
+# Service Account for Datadog Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: datadog-agent
+  namespace: monitoring
+
+---
+# RBAC Configuration for Datadog Agent
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: datadog-agent
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - nodes
+      - services
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    verbs: ["get"]
+    resourceNames: ["datadog-agent-config", "logging-config"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: datadog-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: datadog-agent
+subjects:
+  - kind: ServiceAccount
+    name: datadog-agent
+    namespace: monitoring
