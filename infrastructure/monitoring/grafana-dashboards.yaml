@@ -1,0 +1,300 @@
+# Grafana v6.x Dashboards ConfigMap
+# Purpose: Defines monitoring dashboards for the Terraform Visualization Tool components
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+  labels:
+    app: terraform-visualizer
+    component: monitoring
+    version: 1.0.0
+data:
+  frontend-performance.json: |
+    {
+      "title": "Frontend Performance",
+      "uid": "frontend-perf",
+      "tags": ["terraform-visualizer", "frontend"],
+      "timezone": "browser",
+      "refresh": "1m",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "title": "Graph Visualization Response Time",
+          "type": "graph",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "visualization_update_seconds",
+              "legendFormat": "Response Time"
+            }
+          ],
+          "thresholds": [
+            {
+              "value": 1000,
+              "colorMode": "critical",
+              "op": "gt",
+              "fill": true,
+              "line": true
+            }
+          ],
+          "alert": {
+            "name": "High Visualization Response Time",
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [1000],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": ["A", "5m", "now"]
+                },
+                "reducer": {
+                  "params": [],
+                  "type": "avg"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Request Rate",
+          "type": "stat",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "rate(request_count[5m])",
+              "legendFormat": "Requests/sec"
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["mean"],
+              "fields": "",
+              "values": false
+            }
+          }
+        },
+        {
+          "title": "Client-side Performance",
+          "type": "heatmap",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "client_side_render_time",
+              "legendFormat": "Render Time"
+            },
+            {
+              "expr": "memory_usage_client",
+              "legendFormat": "Memory Usage"
+            }
+          ]
+        }
+      ]
+    }
+
+  backend-services.json: |
+    {
+      "title": "Backend Services",
+      "uid": "backend-services",
+      "tags": ["terraform-visualizer", "backend"],
+      "timezone": "browser",
+      "refresh": "1m",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "title": "API Response Times",
+          "type": "graph",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "api_latency",
+              "legendFormat": "API Latency"
+            }
+          ],
+          "thresholds": [
+            {
+              "value": 200,
+              "colorMode": "critical",
+              "op": "gt",
+              "fill": true,
+              "line": true
+            }
+          ],
+          "alert": {
+            "name": "High API Latency",
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [200],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": ["A", "5m", "now"]
+                },
+                "reducer": {
+                  "params": [],
+                  "type": "avg"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Parse Performance",
+          "type": "graph",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "parse_duration_seconds",
+              "legendFormat": "Parse Duration"
+            }
+          ],
+          "thresholds": [
+            {
+              "value": 3000,
+              "colorMode": "critical",
+              "op": "gt",
+              "fill": true,
+              "line": true
+            }
+          ],
+          "alert": {
+            "name": "Slow Parse Performance",
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [3000],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": ["A", "5m", "now"]
+                },
+                "reducer": {
+                  "params": [],
+                  "type": "avg"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Cache Hit Ratio",
+          "type": "gauge",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "cache_hits / (cache_hits + cache_misses) * 100",
+              "legendFormat": "Hit Ratio"
+            }
+          ],
+          "options": {
+            "thresholds": [
+              {
+                "value": 80,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      ]
+    }
+
+  slo-dashboard.json: |
+    {
+      "title": "Service Level Objectives",
+      "uid": "slo-metrics",
+      "tags": ["terraform-visualizer", "slo"],
+      "timezone": "browser",
+      "refresh": "1m",
+      "panels": [
+        {
+          "title": "Visualization Response SLO",
+          "type": "gauge",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "sum(rate(visualization_update_seconds_bucket{le=\"1.0\"}[28d])) / sum(rate(visualization_update_seconds_count[28d])) * 100",
+              "legendFormat": "% within SLO"
+            }
+          ],
+          "thresholds": [
+            {
+              "value": 99.9,
+              "color": "green"
+            }
+          ]
+        },
+        {
+          "title": "Parse Performance SLO",
+          "type": "gauge",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "sum(rate(parse_duration_seconds_bucket{le=\"3.0\"}[28d])) / sum(rate(parse_duration_seconds_count[28d])) * 100",
+              "legendFormat": "% within SLO"
+            }
+          ],
+          "thresholds": [
+            {
+              "value": 99.5,
+              "color": "green"
+            }
+          ]
+        }
+      ]
+    }
+
+  grafana-config.yaml: |
+    version: 6.x
+    theme: dark
+    default:
+      refresh_intervals:
+        - 1m
+      time_options:
+        - 6h
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: standard
+      backup:
+        enabled: true
+        schedule: "0 0 * * *"
+        retention: "30d"
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        jsonData:
+          timeInterval: "30s"
+          queryTimeout: "60s"
+          httpMethod: "POST"
+    security:
+      roleBasedAccess: true
+      adminPassword: "${GRAFANA_ADMIN_PASSWORD}"
+      allowEmbedding: false
+      cookieSecure: true
