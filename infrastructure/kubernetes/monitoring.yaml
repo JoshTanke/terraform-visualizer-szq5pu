@@ -1,0 +1,325 @@
+---
+# Namespace for monitoring components
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app: terraform-visualizer
+    component: monitoring
+
+---
+# Service Account for monitoring components
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: monitoring-sa
+  namespace: monitoring
+
+---
+# Network Policy for monitoring namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: monitoring-network-policy
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app: terraform-visualizer
+  egress:
+    - to:
+        - namespaceSelector: {}
+
+---
+# Persistent Volume Claim for Prometheus
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-storage
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+
+---
+# Prometheus Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: prometheus
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: monitoring-sa
+      containers:
+        - name: prometheus
+          # prometheus-community/prometheus v15.x
+          image: prom/prometheus:v2.45.0
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=15d
+            - --storage.tsdb.retention.size=50GB
+            - --web.console.libraries=/usr/share/prometheus/console_libraries
+            - --web.console.templates=/usr/share/prometheus/consoles
+          ports:
+            - containerPort: 9090
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 2Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+            - name: prometheus-storage
+              mountPath: /prometheus
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 15
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+        - name: prometheus-storage
+          persistentVolumeClaim:
+            claimName: prometheus-storage
+
+---
+# Grafana Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      serviceAccountName: monitoring-sa
+      containers:
+        - name: grafana
+          # grafana/grafana v6.x
+          image: grafana/grafana:6.7.5
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin-credentials
+                  key: admin-password
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          volumeMounts:
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+            - name: grafana-dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+      volumes:
+        - name: grafana-storage
+          persistentVolumeClaim:
+            claimName: grafana-storage
+        - name: grafana-dashboards
+          configMap:
+            name: grafana-dashboards
+
+---
+# DataDog DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: datadog-agent
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: datadog-agent
+  template:
+    metadata:
+      labels:
+        app: datadog-agent
+    spec:
+      serviceAccountName: monitoring-sa
+      containers:
+        - name: datadog-agent
+          # datadog/datadog v7.x
+          image: datadog/agent:7.45.0
+          env:
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-api-key
+                  key: api-key
+            - name: DD_SITE
+              value: "datadoghq.com"
+            - name: DD_APM_ENABLED
+              value: "true"
+            - name: DD_LOGS_ENABLED
+              value: "true"
+            - name: DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL
+              value: "true"
+            - name: DD_KUBERNETES_KUBELET_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: dockersocket
+              mountPath: /var/run/docker.sock
+            - name: procdir
+              mountPath: /host/proc
+              readOnly: true
+            - name: cgroups
+              mountPath: /host/sys/fs/cgroup
+              readOnly: true
+      volumes:
+        - name: dockersocket
+          hostPath:
+            path: /var/run/docker.sock
+        - name: procdir
+          hostPath:
+            path: /proc
+        - name: cgroups
+          hostPath:
+            path: /sys/fs/cgroup
+
+---
+# Service Monitor for application metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: app-metrics
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: terraform-visualizer
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
+
+---
+# Prometheus Rules for alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: monitoring-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: terraform-visualizer
+      rules:
+        - alert: HighVisualizationLatency
+          expr: visualization_update_seconds > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: High visualization latency detected
+        - alert: HighParseLatency
+          expr: parse_duration_seconds > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: High parse latency detected
+        - alert: HighErrorRate
+          expr: error_rate > 0.01
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: High error rate detected
+
+---
+# Services for monitoring components
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
