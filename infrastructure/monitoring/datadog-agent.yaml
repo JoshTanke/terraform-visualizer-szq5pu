@@ -1,0 +1,186 @@
+# Datadog Agent Version: 7.x
+# Purpose: APM and infrastructure monitoring agent for comprehensive system observability
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: datadog-agent
+  namespace: monitoring
+  labels:
+    app: terraform-visualizer
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: terraform-visualizer
+      component: monitoring
+  template:
+    metadata:
+      labels:
+        app: terraform-visualizer
+        component: monitoring
+    spec:
+      serviceAccountName: datadog-agent
+      containers:
+      - name: datadog-agent
+        image: datadog/agent:7
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: DD_SITE
+          value: "datadoghq.com"
+        - name: DD_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: datadog-secret
+              key: api-key
+        - name: DD_APM_ENABLED
+          value: "true"
+        - name: DD_APM_NON_LOCAL_TRAFFIC
+          value: "true"
+        - name: DD_APM_PORT
+          value: "8126"
+        - name: DD_LOGS_ENABLED
+          value: "true"
+        - name: DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL
+          value: "true"
+        - name: DD_KUBERNETES_KUBELET_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        ports:
+        - containerPort: 8126
+          name: traceport
+          protocol: TCP
+        volumeMounts:
+        - name: dockersocket
+          mountPath: /var/run/docker.sock
+        - name: procdir
+          mountPath: /host/proc
+          readOnly: true
+        - name: cgroups
+          mountPath: /host/sys/fs/cgroup
+          readOnly: true
+        - name: datadog-config
+          mountPath: /etc/datadog-agent
+      volumes:
+      - name: dockersocket
+        hostPath:
+          path: /var/run/docker.sock
+      - name: procdir
+        hostPath:
+          path: /proc
+      - name: cgroups
+        hostPath:
+          path: /sys/fs/cgroup
+      - name: datadog-config
+        configMap:
+          name: datadog-agent-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datadog-agent-config
+  namespace: monitoring
+data:
+  datadog.yaml: |
+    # Agent Settings
+    api_key: ${DD_API_KEY}
+    site: datadoghq.com
+    log_level: INFO
+    tags:
+      - "env:production"
+      - "service:terraform-visualizer"
+      - "team:infrastructure"
+      - "component:monitoring"
+      - "version:1.0"
+
+    # APM Configuration
+    apm_config:
+      enabled: true
+      port: 8126
+      non_local_traffic: true
+      analyzed_spans:
+        terraform-visualizer|http.request: 1.0
+        terraform-visualizer|graph.update: 1.0
+        terraform-visualizer|parser.parse: 1.0
+        terraform-visualizer|github.sync: 1.0
+        terraform-visualizer|visualization.render: 1.0
+
+    # Logs Configuration
+    logs_config:
+      container_collect_all: true
+      processing_rules:
+        - type: multi_line
+          name: stack_traces
+          pattern: ^\s
+        - type: exclude_at_match
+          name: health_checks
+          pattern: health_check
+
+    # Metrics Configuration
+    kubernetes_config:
+      enabled: true
+      collect_events: true
+      collect_service_checks: true
+      collect_control_plane: true
+
+    prometheus_scrape:
+      enabled: true
+      configs:
+        - configurations:
+          - port: metrics
+            metrics: ["*"]
+            send_histograms_buckets: true
+
+    # Custom Metrics
+    custom_metrics:
+      - name: parse_time
+        type: histogram
+        tags: ["module", "size"]
+      - name: render_time
+        type: histogram
+        tags: ["view_type", "node_count"]
+      - name: api_response
+        type: histogram
+        tags: ["endpoint", "method"]
+
+    # Collection Intervals
+    kubernetes_state_interval: 15
+    kubelet_interval: 15
+    node_interval: 15
+    container_interval: 10
+    process_interval: 20
+
+    # Autodiscovery Configuration
+    autodiscovery_config:
+      enabled: true
+      docker_labels: true
+      kubernetes_annotations: true
+      kubernetes_pod_labels: true
+      kubernetes_container_names: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datadog-agent
+  namespace: monitoring
+  labels:
+    app: terraform-visualizer
+    component: monitoring
+spec:
+  selector:
+    app: terraform-visualizer
+    component: monitoring
+  ports:
+  - port: 8126
+    targetPort: traceport
+    name: apm
