@@ -1,0 +1,171 @@
+version: "3.8"
+
+services:
+  # Frontend React application
+  frontend:
+    build:
+      context: ../../src/web
+      dockerfile: ../../infrastructure/docker/frontend.Dockerfile
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://localhost:3000
+      - VITE_WS_URL=ws://localhost:3000
+      - CORS_ORIGIN=http://localhost:80
+      - LOG_LEVEL=debug
+      - RATE_LIMIT_WINDOW=15m
+      - RATE_LIMIT_MAX=100
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+
+  # Backend API Gateway service
+  backend:
+    build:
+      context: ../../src/backend
+      dockerfile: ../../infrastructure/docker/backend.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://mongodb:27017/terraform-viz
+      - REDIS_URI=redis://redis:6379
+      - PARSER_URL=http://parser:3001
+      - CORS_ORIGIN=http://localhost:80
+      - LOG_LEVEL=debug
+      - RATE_LIMIT_WINDOW=15m
+      - RATE_LIMIT_MAX=100
+    depends_on:
+      - mongodb
+      - redis
+      - parser
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+
+  # Terraform Parser service
+  parser:
+    build:
+      context: ../../src/backend
+      dockerfile: ../../infrastructure/docker/parser.Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - LOG_LEVEL=debug
+      - RATE_LIMIT_WINDOW=15m
+      - RATE_LIMIT_MAX=100
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+
+  # Redis cache service
+  redis:
+    image: redis:7.0-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 512M
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+
+  # MongoDB database service
+  mongodb:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "'db.adminCommand(\"ping\")'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+
+volumes:
+  redis_data:
+    name: terraform-viz-redis-data
+  mongodb_data:
+    name: terraform-viz-mongodb-data
+
+networks:
+  app-network:
+    driver: bridge
