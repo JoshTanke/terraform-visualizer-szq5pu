@@ -1,0 +1,166 @@
+# Kubernetes API version and resource type
+# Using apps/v1 for Deployment resource which is stable in Kubernetes 1.25+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parser-deployment
+  namespace: terraform-visualizer
+  labels:
+    app: terraform-visualizer
+    component: parser
+  annotations:
+    description: "Parser service for Terraform Visualization Tool"
+    version: "1.0.0"
+
+spec:
+  # Initial replica count set to 2 for high availability
+  # HPA will scale between 2-6 replicas based on CPU utilization
+  replicas: 2
+  
+  # Pod selector for the deployment
+  selector:
+    matchLabels:
+      app: terraform-visualizer
+      component: parser
+
+  # Deployment update strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Allow one extra pod during updates
+      maxSurge: 1
+      # Ensure no downtime during updates
+      maxUnavailable: 0
+
+  # Pod template specification
+  template:
+    metadata:
+      labels:
+        app: terraform-visualizer
+        component: parser
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3001"
+        prometheus.io/path: "/metrics"
+
+    spec:
+      # Security context for the pod
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+
+      # Container specifications
+      containers:
+      - name: parser
+        image: terraform-visualizer/parser:latest
+        imagePullPolicy: Always
+        
+        # Container ports
+        ports:
+        - name: http
+          containerPort: 3001
+          protocol: TCP
+
+        # Resource requirements as per technical specifications
+        # CPU: 2 vCPU (2000m)
+        # Memory: 4GB (4Gi)
+        resources:
+          requests:
+            cpu: "1000m"
+            memory: "2Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+
+        # Environment variables
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3001"
+        
+        # Environment variables from config map
+        envFrom:
+        - configMapRef:
+            name: parser-config
+        - secretRef:
+            name: parser-secrets
+
+        # Volume mounts for configuration and secrets
+        volumeMounts:
+        - name: parser-config
+          mountPath: /app/config
+          readOnly: true
+        - name: parser-secrets
+          mountPath: /app/secrets
+          readOnly: true
+
+        # Liveness probe to check container health
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Readiness probe to check service availability
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+      # Volumes configuration
+      volumes:
+      - name: parser-config
+        configMap:
+          name: parser-config
+      - name: parser-secrets
+        secret:
+          secretName: parser-secrets
+
+      # Pod scheduling and anti-affinity
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: component
+                  operator: In
+                  values:
+                  - parser
+              topologyKey: kubernetes.io/hostname
+
+      # Termination grace period
+      terminationGracePeriodSeconds: 60
+
+---
+# Horizontal Pod Autoscaler for parser deployment
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: parser-hpa
+  namespace: terraform-visualizer
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: parser-deployment
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
