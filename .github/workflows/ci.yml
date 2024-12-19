@@ -100,7 +100,7 @@ jobs:
         run: npm run build
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and cache Docker image
         uses: docker/build-push-action@v4
@@ -168,7 +168,7 @@ jobs:
           VITE_WS_URL: ws://localhost:3000
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and cache Docker image
         uses: docker/build-push-action@v4
