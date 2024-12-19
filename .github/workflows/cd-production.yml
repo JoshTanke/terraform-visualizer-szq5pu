@@ -1,0 +1,270 @@
+name: CD-Production
+
+# Trigger on successful staging deployment or manual dispatch
+on:
+  workflow_run:
+    workflows: ["CD-Staging"]
+    types:
+      - completed
+  workflow_dispatch:
+
+# Concurrency control to prevent multiple deployments
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+# Environment and permissions configuration
+env:
+  AWS_REGION: us-east-1
+  ENVIRONMENT: production
+  TF_WORKSPACE: production
+  NODE_VERSION: '18'
+  TERRAFORM_VERSION: '1.5.x'
+
+permissions:
+  contents: read
+  packages: write
+  deployments: write
+  id-token: write
+  environments: write
+
+jobs:
+  # Production deployment approval and validation
+  approval:
+    name: Production Deployment Approval
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check staging deployment status
+        if: github.event.workflow_run.conclusion != 'success'
+        run: |
+          echo "Staging deployment must be successful before proceeding to production"
+          exit 1
+
+      - name: Manual approval check
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ secrets.GITHUB_TOKEN }}
+          approvers: devops-team,infrastructure-team
+          minimum-approvals: 2
+          timeout-minutes: 30
+
+      - name: Verify security compliance
+        run: |
+          echo "Verifying security compliance and audit requirements..."
+          # Add security compliance verification logic here
+
+      - name: Check infrastructure costs
+        run: |
+          echo "Validating infrastructure cost estimates..."
+          # Add cost validation logic here
+
+  # Infrastructure deployment
+  deploy-infrastructure:
+    needs: approval
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      infrastructure_status: ${{ steps.tf_apply.outcome }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: infrastructure/terraform/environments/production
+        run: |
+          terraform init \
+            -backend-config="bucket=terraform-visualizer-tfstate-prod" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform Plan
+        id: tf_plan
+        working-directory: infrastructure/terraform/environments/production
+        run: |
+          terraform plan \
+            -var="environment=production" \
+            -var="aws_region=${{ env.AWS_REGION }}" \
+            -out=tfplan
+
+      - name: Terraform Apply
+        id: tf_apply
+        working-directory: infrastructure/terraform/environments/production
+        run: |
+          terraform apply -auto-approve tfplan
+
+      - name: Verify Infrastructure Health
+        run: |
+          echo "Verifying infrastructure health across all AZs..."
+          # Add health check logic here
+
+  # Application deployment
+  deploy-applications:
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: infrastructure/docker/frontend.Dockerfile
+          push: true
+          tags: ${{ secrets.ECR_REGISTRY }}/frontend:${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.ECR_REGISTRY }}/frontend:latest
+          cache-to: type=inline
+
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: infrastructure/docker/backend.Dockerfile
+          push: true
+          tags: ${{ secrets.ECR_REGISTRY }}/backend:${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.ECR_REGISTRY }}/backend:latest
+          cache-to: type=inline
+
+      - name: Build and push Parser image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: infrastructure/docker/parser.Dockerfile
+          push: true
+          tags: ${{ secrets.ECR_REGISTRY }}/parser:${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.ECR_REGISTRY }}/parser:latest
+          cache-to: type=inline
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster terraform-visualizer-production \
+            --service frontend \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster terraform-visualizer-production \
+            --service backend \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster terraform-visualizer-production \
+            --service parser \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Wait for services stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster terraform-visualizer-production \
+            --services frontend backend parser \
+            --region ${{ env.AWS_REGION }}
+
+  # Post-deployment tasks
+  post-deployment:
+    needs: deploy-applications
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Run integration tests
+        run: |
+          echo "Running comprehensive integration tests..."
+          # Add integration test logic here
+
+      - name: Security scan
+        run: |
+          echo "Running security penetration tests..."
+          # Add security scan logic here
+
+      - name: Tag release in Datadog
+        uses: datadog/action-datadog-tag-release@v1
+        with:
+          api-key: ${{ secrets.DATADOG_API_KEY }}
+          environment: production
+          version: ${{ github.sha }}
+
+      - name: Update monitoring
+        run: |
+          echo "Configuring monitoring alerts and dashboards..."
+          # Add monitoring configuration logic here
+
+  # Rollback handling
+  rollback:
+    needs: [deploy-infrastructure, deploy-applications]
+    if: failure()
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback ECS Services
+        if: needs.deploy-applications.result == 'failure'
+        run: |
+          aws ecs update-service \
+            --cluster terraform-visualizer-production \
+            --service frontend \
+            --task-definition frontend:${{ github.event.before }} \
+            --region ${{ env.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster terraform-visualizer-production \
+            --service backend \
+            --task-definition backend:${{ github.event.before }} \
+            --region ${{ env.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster terraform-visualizer-production \
+            --service parser \
+            --task-definition parser:${{ github.event.before }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Rollback Infrastructure
+        if: needs.deploy-infrastructure.result == 'failure'
+        working-directory: infrastructure/terraform/environments/production
+        run: |
+          terraform init
+          terraform workspace select production
+          terraform plan -destroy -out=destroy.tfplan
+          terraform apply -auto-approve destroy.tfplan
+
+      - name: Notify rollback status
+        if: always()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          channel-id: 'production-alerts'
+          slack-message: "Production deployment rollback status: ${{ job.status }}"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_WEBHOOK_URL }}
