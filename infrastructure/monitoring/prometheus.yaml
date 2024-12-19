@@ -1,0 +1,105 @@
+# Prometheus Server Configuration
+# Version: prometheus-community/prometheus@15.x
+# Purpose: Core monitoring configuration for Terraform Visualization Tool
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+  labels:
+    app: terraform-visualizer
+    component: monitoring
+
+data:
+  prometheus.yml:
+    # Global configuration settings
+    global:
+      # Scrape interval for metrics collection
+      scrape_interval: 15s
+      # How frequently to evaluate rules
+      evaluation_interval: 15s
+      # External labels to identify this Prometheus instance
+      external_labels:
+        app: terraform-visualizer
+        environment: ${ENV}
+
+    # Alert rules configuration files
+    rule_files:
+      - /etc/prometheus/alerts/*.yaml
+
+    # Scrape configurations for service discovery and metrics collection
+    scrape_configs:
+      # Frontend service monitoring
+      - job_name: frontend
+        metrics_path: /metrics
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [default]
+            selectors:
+              - role: service
+                label: app=terraform-visualizer,component=frontend
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: instance
+
+      # Backend service monitoring
+      - job_name: backend
+        metrics_path: /metrics
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [default]
+            selectors:
+              - role: service
+                label: app=terraform-visualizer,component=backend
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: instance
+
+      # Parser service monitoring
+      - job_name: parser
+        metrics_path: /metrics
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [default]
+            selectors:
+              - role: service
+                label: app=terraform-visualizer,component=parser
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: instance
+
+    # Alertmanager configuration
+    alerting:
+      alertmanagers:
+        - kubernetes_sd_configs:
+            - role: pod
+              namespaces:
+                names: [monitoring]
+              selectors:
+                - role: service
+                  label: app=alertmanager
+          path_prefix: /
+          scheme: http
+          timeout: 10s
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_name]
+              target_label: alertmanager
+
+    # Storage configuration for metrics retention
+    storage:
+      tsdb:
+        # Retention settings based on global configuration
+        retention_time: 15d
+        retention_size: 50GB
+        # Enable WAL compression for better storage efficiency
+        wal_compression: true
