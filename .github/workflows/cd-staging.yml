@@ -1,0 +1,238 @@
+name: CD-Staging
+
+# Trigger on successful CI workflow completion or manual dispatch
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+  workflow_dispatch:
+
+# Environment and concurrency configuration
+env:
+  AWS_REGION: us-east-1
+  ENVIRONMENT: staging
+  TF_WORKSPACE: staging
+  DEPLOY_TIMEOUT: 600
+  HEALTH_CHECK_RETRIES: 5
+  PERFORMANCE_THRESHOLD: 1000
+
+# Concurrency control to prevent parallel deployments
+concurrency:
+  group: staging
+  cancel-in-progress: true
+
+# Required permissions for deployment
+permissions:
+  contents: read
+  packages: write
+  deployments: write
+  id-token: write
+  security-events: write
+
+jobs:
+  # Infrastructure Deployment Job
+  deploy-infrastructure:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      cluster_name: ${{ steps.terraform-output.outputs.cluster_name }}
+      
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.x"
+          terraform_wrapper: false
+
+      - name: Initialize Terraform
+        working-directory: infrastructure/terraform/environments/staging
+        run: |
+          terraform init \
+            -backend-config="bucket=terraform-visualizer-staging-state" \
+            -backend-config="key=staging/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Validate Terraform Configuration
+        working-directory: infrastructure/terraform/environments/staging
+        run: terraform validate
+
+      - name: Plan Terraform Changes
+        working-directory: infrastructure/terraform/environments/staging
+        run: terraform plan -out=tfplan
+        env:
+          TF_VAR_mongodb_password: ${{ secrets.MONGODB_PASSWORD }}
+          TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
+          TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
+
+      - name: Apply Terraform Changes
+        working-directory: infrastructure/terraform/environments/staging
+        run: terraform apply -auto-approve tfplan
+
+      - name: Extract Terraform Outputs
+        id: terraform-output
+        working-directory: infrastructure/terraform/environments/staging
+        run: |
+          echo "cluster_name=$(terraform output -raw ecs_cluster_name)" >> $GITHUB_OUTPUT
+
+  # Application Deployment Job
+  deploy-applications:
+    name: Deploy Applications
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ secrets.ECR_REGISTRY }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Frontend Container Build and Push
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: infrastructure/docker/frontend.Dockerfile
+          push: true
+          tags: ${{ secrets.ECR_REGISTRY }}/frontend:staging-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VITE_API_URL=https://api-staging.terraform-visualizer.com
+            VITE_WS_URL=wss://api-staging.terraform-visualizer.com
+            VITE_APP_VERSION=${{ github.sha }}
+
+      # Backend Container Build and Push
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: infrastructure/docker/backend.Dockerfile
+          push: true
+          tags: ${{ secrets.ECR_REGISTRY }}/backend:staging-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Parser Container Build and Push
+      - name: Build and Push Parser Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: infrastructure/docker/parser.Dockerfile
+          push: true
+          tags: ${{ secrets.ECR_REGISTRY }}/parser:staging-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Update ECS Services
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster ${{ needs.deploy-infrastructure.outputs.cluster_name }} \
+            --service frontend-service \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+          aws ecs wait services-stable \
+            --cluster ${{ needs.deploy-infrastructure.outputs.cluster_name }} \
+            --services frontend-service \
+            --region ${{ env.AWS_REGION }}
+
+  # Post-Deployment Validation
+  post-deployment:
+    name: Post-Deployment Validation
+    needs: [deploy-infrastructure, deploy-applications]
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+      - name: Run Integration Tests
+        run: |
+          # Wait for services to be fully available
+          sleep 30
+          
+          # Perform health checks
+          for i in $(seq 1 ${{ env.HEALTH_CHECK_RETRIES }}); do
+            if curl -f https://api-staging.terraform-visualizer.com/health; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
+
+      - name: Validate Performance
+        run: |
+          # Check application response times
+          response_time=$(curl -w "%{time_total}" -o /dev/null -s https://api-staging.terraform-visualizer.com/health)
+          if (( $(echo "$response_time > ${{ env.PERFORMANCE_THRESHOLD }}" | bc -l) )); then
+            echo "Performance threshold exceeded: ${response_time}ms"
+            exit 1
+          fi
+
+      - name: Tag Release in DataDog
+        uses: datadog/action-datadog-tag-release@v1
+        with:
+          api-key: ${{ secrets.DATADOG_API_KEY }}
+          environment: staging
+          service: terraform-visualizer
+          version: ${{ github.sha }}
+
+  # Rollback Job (triggered on failure)
+  rollback:
+    name: Rollback Deployment
+    needs: [deploy-infrastructure, deploy-applications, post-deployment]
+    if: failure()
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback ECS Deployment
+        run: |
+          aws ecs update-service \
+            --cluster ${{ needs.deploy-infrastructure.outputs.cluster_name }} \
+            --service frontend-service \
+            --task-definition $(aws ecs describe-services \
+              --cluster ${{ needs.deploy-infrastructure.outputs.cluster_name }} \
+              --services frontend-service \
+              --query 'services[0].taskDefinition' \
+              --output text) \
+            --force-new-deployment
+
+      - name: Notify Deployment Failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"Staging deployment failed and initiated rollback. Environment: staging, Commit: ${{ github.sha }}"}' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
