@@ -1,0 +1,82 @@
+**/.git
+**/.gitignore
+
+# Dependencies
+**/node_modules
+**/.npmrc
+**/.yarnrc
+
+# Build and Compilation
+**/dist
+**/build
+**/*.js.map
+
+# Environment and Secrets
+**/.env*
+**/config/*.json
+**/*.key
+**/*.pem
+**/secrets.*
+
+# Test and Coverage
+**/tests
+**/coverage
+**/*.test.ts
+**/*.spec.ts
+**/jest.config.ts
+**/__tests__
+**/__mocks__
+
+# Logs and Debugging
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# Documentation
+**/README.md
+**/CHANGELOG.md
+**/docs
+**/LICENSE
+
+# IDE and Editor
+**/.vscode
+**/.idea
+**/.settings
+**/.project
+**/.classpath
+**/.DS_Store
+**/Thumbs.db
+
+# Docker Files
+**/Dockerfile*
+**/.dockerignore
+
+# Development Tools
+**/.eslintrc*
+**/.prettierrc*
+**/.babelrc*
+**/tsconfig.json
+**/webpack.config.*
+
+# Temporary Files
+**/tmp
+**/temp
+**/*.swp
+**/*.swo
+
+# Cache Directories
+**/.cache
+**/.npm
+**/.yarn
+**/.next
+**/.nuxt
+
+# OS Generated
+**/.DS_Store
+**/.DS_Store?
+**/._*
+**/.Spotlight-V100
+**/.Trashes
+**/ehthumbs.db
+**/Thumbs.db
