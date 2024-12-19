@@ -1,0 +1,47 @@
+MIT License
+
+Copyright (c) 2024 Terraform Visualization Tool
+
+Permission is hereby granted, free of charge, to any person or organization obtaining a copy
+of this software, associated documentation files, and visualization components (the "Software"),
+to deal in the Software without restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+and to permit persons to whom the Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+This license explicitly covers:
+1. The visualization engine built with React Flow
+2. The HCL2-compliant Terraform configuration parser
+3. Real-time code editing components
+4. GitHub integration modules
+5. All enterprise integration components
+6. Multi-level visualization system components
+7. Associated documentation and specifications
+
+This software integrates with third-party services and components, each subject to their
+respective licenses and terms of service, including but not limited to:
+- React and React Flow
+- Material-UI
+- MongoDB
+- Redis
+- AWS Services
+- GitHub API
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+For enterprise deployments:
+The above copyright notice and permission notice shall be included in all copies or
+substantial portions of the Software deployed in enterprise environments. Organizations
+implementing this software must ensure compliance with all third-party service terms
+and conditions referenced above.
+
+For questions about licensing or enterprise implementation, please contact:
+legal@terraform-visualization-tool.com
