@@ -1,0 +1,132 @@
+---
+# MongoDB StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: terraform-visualizer
+  labels:
+    app: terraform-visualizer
+    component: mongodb
+    version: "6.0"
+  annotations:
+    # Automated backup configuration using Velero
+    backup.velero.io/schedule: "0 2 * * *"
+    backup.velero.io/retention: "30d"
+    # Prometheus metrics scraping configuration
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9216"
+spec:
+  replicas: 1
+  serviceName: mongodb-service
+  selector:
+    matchLabels:
+      app: terraform-visualizer
+      component: mongodb
+  template:
+    metadata:
+      labels:
+        app: terraform-visualizer
+        component: mongodb
+    spec:
+      # Security context for MongoDB pod
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+      containers:
+        # Main MongoDB container
+        - name: mongodb
+          image: mongo:6.0
+          ports:
+            - containerPort: 27017
+              name: mongodb
+            - containerPort: 9216
+              name: metrics
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+            - name: mongodb-config
+              mountPath: /config
+            - name: mongodb-secrets
+              mountPath: /secrets
+              readOnly: true
+          # Health checks
+          livenessProbe:
+            tcpSocket:
+              port: 27017
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 27017
+            initialDelaySeconds: 5
+            periodSeconds: 10
+        
+        # MongoDB Exporter for Prometheus metrics
+        - name: mongodb-exporter
+          image: bitnami/mongodb-exporter:0.33.0
+          ports:
+            - containerPort: 9216
+              name: metrics
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+      
+      # Volume configurations
+      volumes:
+        - name: mongodb-config
+          configMap:
+            name: mongodb-config
+        - name: mongodb-secrets
+          secret:
+            secretName: mongodb-secrets
+  
+  # Persistent volume claim template for MongoDB data
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        storageClassName: standard
+
+---
+# MongoDB Headless Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-service
+  namespace: terraform-visualizer
+  labels:
+    app: terraform-visualizer
+    component: mongodb
+spec:
+  ports:
+    - port: 27017
+      targetPort: 27017
+      protocol: TCP
+      name: mongodb
+    - port: 9216
+      targetPort: 9216
+      protocol: TCP
+      name: metrics
+  selector:
+    app: terraform-visualizer
+    component: mongodb
+  clusterIP: None
+  type: ClusterIP
