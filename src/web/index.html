@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    
+    <!-- Primary Meta Tags -->
+    <title>Terraform Visualizer</title>
+    <meta name="description" content="Interactive visualization and management of Terraform infrastructure code">
+    <meta name="application-name" content="Terraform Visualizer">
+    <meta name="theme-color" content="#1976d2">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Terraform Visualizer">
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.github.com;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    
+    <!-- Font Preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Fonts and Icons -->
+    <link 
+      rel="stylesheet" 
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
+      media="print"
+      onload="this.media='all'"
+    >
+    <link 
+      rel="stylesheet" 
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+    >
+    
+    <!-- App Icons and Manifest -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Critical CSS -->
+    <link rel="stylesheet" href="/src/assets/styles/global.css">
+    
+    <!-- Accessibility -->
+    <script>
+      // Check for reduced motion preference
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.documentElement.classList.add('reduced-motion');
+      }
+      
+      // Check for high contrast preference
+      if (window.matchMedia('(prefers-contrast: more)').matches) {
+        document.documentElement.classList.add('high-contrast');
+      }
+    </script>
+  </head>
+  <body>
+    <!-- Skip to main content link for accessibility -->
+    <a href="#root" class="skip-link">
+      Skip to main content
+    </a>
+    
+    <!-- React mount point -->
+    <div id="root" role="main" aria-label="Terraform Visualization Tool"></div>
+    
+    <!-- No JavaScript fallback -->
+    <noscript>
+      <div class="noscript-message" role="alert">
+        You need to enable JavaScript to run this application.
+      </div>
+    </noscript>
+    
+    <!-- Application entry point -->
+    <script type="module" src="/src/index.tsx"></script>
+    
+    <!-- Performance monitoring -->
+    <script>
+      // Report vital metrics
+      if ('performance' in window) {
+        window.addEventListener('load', () => {
+          setTimeout(() => {
+            const paintMetrics = performance.getEntriesByType('paint');
+            const navigationMetrics = performance.getEntriesByType('navigation');
+            
+            if (paintMetrics.length > 0) {
+              console.debug('Paint Metrics:', paintMetrics);
+            }
+            if (navigationMetrics.length > 0) {
+              console.debug('Navigation Metrics:', navigationMetrics);
+            }
+          }, 0);
+        });
+      }
+    </script>
+  </body>
+</html>
