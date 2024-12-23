@@ -23,7 +23,7 @@
     "@mui/icons-material": "^5.11.16",
     "@mui/lab": "^5.0.0",
     "@mui/material": "^5.13.0",
-    "@octokit/rest": "^19.0.0",
+    "@octokit/rest": "^21.0.2",
     "@reduxjs/toolkit": "^1.9.5",
     "@sentry/react": "^7.0.0",
     "axios": "^1.4.0",
