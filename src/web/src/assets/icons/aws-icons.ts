@@ -19,12 +19,12 @@ const AWS_ICON_VIEWBOX = '0 0 24 24';
  * @param props - Icon properties including size, color, className, and accessibility label
  * @returns Accessible SVG icon element
  */
-export const EC2Icon = React.memo<AWSIconProps>(({
+export const EC2Icon: React.FC<AWSIconProps> = React.memo(({
   size = DEFAULT_ICON_SIZE,
   color = DEFAULT_ICON_COLOR,
   className = '',
   ariaLabel = 'AWS EC2 Instance'
-}) => (
+}: AWSIconProps) => (
   <svg
     width={size}
     height={size}
@@ -49,12 +49,12 @@ EC2Icon.displayName = 'EC2Icon';
  * @param props - Icon properties including size, color, className, and accessibility label
  * @returns Accessible SVG icon element
  */
-export const VPCIcon = React.memo<AWSIconProps>(({
+export const VPCIcon: React.FC<AWSIconProps> = React.memo(({
   size = DEFAULT_ICON_SIZE,
   color = DEFAULT_ICON_COLOR,
   className = '',
   ariaLabel = 'AWS VPC'
-}) => (
+}: AWSIconProps) => (
   <svg
     width={size}
     height={size}
@@ -79,12 +79,12 @@ VPCIcon.displayName = 'VPCIcon';
  * @param props - Icon properties including size, color, className, and accessibility label
  * @returns Accessible SVG icon element
  */
-export const RDSIcon = React.memo<AWSIconProps>(({
+export const RDSIcon: React.FC<AWSIconProps> = React.memo(({
   size = DEFAULT_ICON_SIZE,
   color = DEFAULT_ICON_COLOR,
   className = '',
   ariaLabel = 'AWS RDS Database'
-}) => (
+}: AWSIconProps) => (
   <svg
     width={size}
     height={size}
@@ -109,12 +109,12 @@ RDSIcon.displayName = 'RDSIcon';
  * @param props - Icon properties including size, color, className, and accessibility label
  * @returns Accessible SVG icon element
  */
-export const S3Icon = React.memo<AWSIconProps>(({
+export const S3Icon: React.FC<AWSIconProps> = React.memo(({
   size = DEFAULT_ICON_SIZE,
   color = DEFAULT_ICON_COLOR,
   className = '',
   ariaLabel = 'AWS S3 Bucket'
-}) => (
+}: AWSIconProps) => (
   <svg
     width={size}
     height={size}
@@ -139,12 +139,12 @@ S3Icon.displayName = 'S3Icon';
  * @param props - Icon properties including size, color, className, and accessibility label
  * @returns Accessible SVG icon element
  */
-export const IAMIcon = React.memo<AWSIconProps>(({
+export const IAMIcon: React.FC<AWSIconProps> = React.memo(({
   size = DEFAULT_ICON_SIZE,
   color = DEFAULT_ICON_COLOR,
   className = '',
   ariaLabel = 'AWS IAM Resource'
-}) => (
+}: AWSIconProps) => (
   <svg
     width={size}
     height={size}
