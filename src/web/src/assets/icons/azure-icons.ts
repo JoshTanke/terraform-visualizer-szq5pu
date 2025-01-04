@@ -35,52 +35,53 @@ const withIconWrapper = (
   WrappedIcon: React.FC<AzureIconProps>,
   defaultLabel: string
 ): React.FC<AzureIconProps> => {
-  return memo(({
+  const Component = memo(({
     size = DEFAULT_ICON_SIZE,
     color = DEFAULT_ICON_COLOR,
     className = '',
     ariaLabel = defaultLabel,
   }: AzureIconProps) => {
     try {
-      return (
-        <svg
-          width={size}
-          height={size}
-          viewBox={SVG_VIEWBOX}
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className={className}
-          aria-label={ariaLabel}
-          role="img"
-        >
-          <WrappedIcon size={size} color={color} className={className} ariaLabel={ariaLabel} />
-        </svg>
+      return React.createElement(
+        'svg',
+        {
+          width: size,
+          height: size,
+          viewBox: SVG_VIEWBOX,
+          fill: 'none',
+          xmlns: 'http://www.w3.org/2000/svg',
+          className: className,
+          'aria-label': ariaLabel,
+          role: 'img'
+        },
+        React.createElement(WrappedIcon, { size, color, className, ariaLabel })
       );
     } catch (error) {
       console.error(`Error rendering Azure icon: ${error}`);
       return null;
     }
   });
+  return Component;
 };
 
 // Individual icon components
 export const VirtualMachineIcon = withIconWrapper(
-  memo(({ color = DEFAULT_ICON_COLOR }: AzureIconProps) => (
-    <path
-      d="M20 3H4C3.45 3 3 3.45 3 4V20C3 20.55 3.45 21 4 21H20C20.55 21 21 20.55 21 20V4C21 3.45 20.55 3 20 3ZM19 19H5V5H19V19ZM16 7H8V9H16V7ZM16 11H8V13H16V11ZM16 15H8V17H16V15Z"
-      fill={color}
-    />
-  )),
+  memo(({ color = DEFAULT_ICON_COLOR }: AzureIconProps) => 
+    React.createElement('path', {
+      d: 'M20 3H4C3.45 3 3 3.45 3 4V20C3 20.55 3.45 21 4 21H20C20.55 21 21 20.55 21 20V4C21 3.45 20.55 3 20 3ZM19 19H5V5H19V19ZM16 7H8V9H16V7ZM16 11H8V13H16V11ZM16 15H8V17H16V15Z',
+      fill: color
+    })
+  ),
   'Azure Virtual Machine'
 );
 
 export const StorageAccountIcon = withIconWrapper(
-  memo(({ color = DEFAULT_ICON_COLOR }: AzureIconProps) => (
-    <path
-      d="M20 6H4V8H20V6ZM20 10H4V12H20V10ZM20 14H4V16H20V14ZM4 18H20V20H4V18Z"
-      fill={color}
-    />
-  )),
+  memo(({ color = DEFAULT_ICON_COLOR }: AzureIconProps) => 
+    React.createElement('path', {
+      d: 'M20 6H4V8H20V6ZM20 10H4V12H20V10ZM20 14H4V16H20V14ZM4 18H20V20H4V18Z',
+      fill: color
+    })
+  ),
   'Azure Storage Account'
 );
 
