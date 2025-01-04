@@ -35,7 +35,7 @@ const withIconWrapper = (
   WrappedIcon: React.FC<AzureIconProps>,
   defaultLabel: string
 ): React.FC<AzureIconProps> => {
-  const Component = memo(({
+  return memo(({
     size = DEFAULT_ICON_SIZE,
     color = DEFAULT_ICON_COLOR,
     className = '',
@@ -61,7 +61,6 @@ const withIconWrapper = (
       return null;
     }
   });
-  return Component;
 };
 
 // Individual icon components
