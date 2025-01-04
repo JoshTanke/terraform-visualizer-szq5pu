@@ -46,7 +46,7 @@ const mockToken: IToken = {
 
 describe('useAuth hook', () => {
   let store: any;
-  let wrapper: any;
+  let wrapper: React.FC<{ children: React.ReactNode }>;
 
   beforeEach(() => {
     // Reset all mocks
@@ -71,7 +71,7 @@ describe('useAuth hook', () => {
     });
 
     // Create wrapper with Redux Provider
-    wrapper = ({ children }: { children: React.ReactNode }) => (
+    wrapper = ({ children }) => (
       <Provider store={store}>{children}</Provider>
     );
 
