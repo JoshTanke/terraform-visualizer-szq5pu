@@ -77,9 +77,11 @@ const createWrapper = () => {
         }
     });
 
-    return ({ children }: { children: React.ReactNode }) => (
-        <Provider store={store}>{children}</Provider>
-    );
+    return function TestWrapper({ children }: { children: React.ReactNode }) {
+        return (
+            <Provider store={store}>{children}</Provider>
+        );
+    };
 };
 
 describe('useGraph Hook', () => {
